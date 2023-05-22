@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:location/location.dart';
+// import 'package:geolocator/geolocator.dart' as geo;
+import 'package:permission_handler/permission_handler.dart' as perm;
 import 'package:volume_control/volume_control.dart';
+// import 'package:location/location.dart';
 
 void main() {
   runApp(const MyApp());
@@ -51,14 +54,43 @@ class _VolumeControlPageState extends State<VolumeControlPage> {
   }
 
   void _startListeningToSpeedChanges() async {
-    PermissionStatus permissionStatus =
-        await Permission.locationWhenInUse.request();
-    if (permissionStatus == PermissionStatus.granted) {
+    perm.PermissionStatus permissionStatus =
+        await perm.Permission.locationWhenInUse.request();
+    if (permissionStatus == perm.PermissionStatus.granted) {
       // Request always permission
-      permissionStatus = await Permission.locationAlways.request();
-      if (permissionStatus == PermissionStatus.granted) {
-        Geolocator.getPositionStream().listen((Position position) {
-          double speed = position.speed;
+      permissionStatus = await perm.Permission.locationAlways.request();
+
+      if (permissionStatus == perm.PermissionStatus.granted) {
+        // if (defaultTargetPlatform == TargetPlatform.android) {
+        // var l = geo.AndroidSettings(
+        //     accuracy: geo.LocationAccuracy.high,
+        //     distanceFilter: 100,
+        //     forceLocationManager: true,
+        //     intervalDuration: const Duration(seconds: 3),
+        //     //(Optional) Set foreground notification config to keep the app alive
+        //     //when going to the background
+        //     foregroundNotificationConfig:
+        //         const geo.ForegroundNotificationConfig(
+        //       notificationText:
+        //           "Example app will continue to receive your location even when you aren't using it",
+        //       notificationTitle: "Running in Background",
+        //       enableWakeLock: false,
+        //     ));
+// }
+
+        Location location = Location();
+
+        location.enableBackgroundMode(enable: true);
+
+        location.onLocationChanged.listen((LocationData currentLocation) {
+          // Use current location
+          print(
+              'Speed: ${currentLocation.speed}, accuracy: ${currentLocation.speedAccuracy}');
+
+          // TODO ADD ALLOW_START_FOREGROUND, reload app when it's in the background
+
+          double? speed = currentLocation.speed ?? 0;
+
           setState(() {
             _currentSpeed = speed;
           });
@@ -79,9 +111,37 @@ class _VolumeControlPageState extends State<VolumeControlPage> {
             }
           }
         });
+
+        // var accuracy = await geo.Geolocator.getLocationAccuracy();
+        // print(accuracy);
+        // geo.Geolocator.getPositionStream().listen((geo.Position position) {
+        //   print('speed! ${position.speed}');
+        //   double speed = position.speed;
+
+        //   setState(() {
+        //     _currentSpeed = speed;
+        //   });
+
+        //   if (speed < 150) {
+        //     if (_trackSpeed + 20 < speed) {
+        //       // Adjust volume up
+        //       setState(() {
+        //         _trackSpeed = speed;
+        //       });
+        //       _adjustVolumeBasedOnSpeed(speed);
+        //     } else if (_trackSpeed + 20 > speed) {
+        //       // Adjust volume down
+        //       setState(() {
+        //         _trackSpeed = speed;
+        //       });
+        //       _adjustVolumeBasedOnSpeed(speed);
+        //     }
+        //   }
+        // });
       }
     } else {
       // Handle the case when location permission is not granted
+      print('no :()');
     }
   }
 
