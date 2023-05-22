@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:volume_control/volume_control.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,103 +18,133 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Flutter Demo',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const VolumeControlPage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+class VolumeControlPage extends StatefulWidget {
+  const VolumeControlPage({super.key});
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<VolumeControlPage> createState() => _VolumeControlPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _VolumeControlPageState extends State<VolumeControlPage> {
+  double _currentSpeed = 0.0;
+  double _trackSpeed = 0.0;
+  double _currentVolume = 0.0;
 
-  void _incrementCounter() {
+  @override
+  void initState() {
+    super.initState();
+    _initializeVolumeControl();
+    _startListeningToSpeedChanges();
+  }
+
+  void _initializeVolumeControl() async {
+    double volume = await VolumeControl.volume;
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _currentVolume = volume;
     });
   }
 
+  void _startListeningToSpeedChanges() async {
+    PermissionStatus permissionStatus =
+        await Permission.locationWhenInUse.request();
+    if (permissionStatus == PermissionStatus.granted) {
+      // Request always permission
+      permissionStatus = await Permission.locationAlways.request();
+      if (permissionStatus == PermissionStatus.granted) {
+        Geolocator.getPositionStream().listen((Position position) {
+          double speed = position.speed;
+          setState(() {
+            _currentSpeed = speed;
+          });
+
+          if (speed < 150) {
+            if (_trackSpeed + 20 < speed) {
+              // Adjust volume up
+              setState(() {
+                _trackSpeed = speed;
+              });
+              _adjustVolumeBasedOnSpeed(speed);
+            } else if (_trackSpeed + 20 > speed) {
+              // Adjust volume down
+              setState(() {
+                _trackSpeed = speed;
+              });
+              _adjustVolumeBasedOnSpeed(speed);
+            }
+          }
+        });
+      }
+    } else {
+      // Handle the case when location permission is not granted
+    }
+  }
+
+  void _adjustVolumeBasedOnSpeed(double speed) async {
+    // Define your own logic to adjust the volume based on speed
+    double maxSpeed = 150.0; // Maximum speed at which volume is increased
+    double maxVolume = 0.8; // Maximum volume level
+
+    double newVolume =
+        speed <= maxSpeed ? (speed / maxSpeed) * maxVolume : maxVolume;
+
+    await VolumeControl.setVolume(newVolume);
+    setState(() {
+      _currentVolume = newVolume;
+    });
+  }
+
+  double _val = 0.5;
+  Timer? timer;
+
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Volume Control'),
       ),
       body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
           mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
+          children: [
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              'Current Speed: $_currentSpeed m/s',
+              style: const TextStyle(fontSize: 20),
             ),
+            const SizedBox(height: 20),
+            Text(
+              'Current Volume: $_currentVolume',
+              style: const TextStyle(fontSize: 20),
+            ),
+            Center(
+                child: Slider(
+                    value: _val,
+                    min: 0,
+                    max: 1,
+                    divisions: 100,
+                    onChanged: (val) {
+                      _val = val;
+                      setState(() {});
+                      if (timer != null) {
+                        timer?.cancel();
+                      }
+
+                      //use timer for the smoother sliding
+                      timer = Timer(const Duration(milliseconds: 200), () {
+                        setState(() {
+                          _currentVolume = val;
+                        });
+                        VolumeControl.setVolume(val);
+                      });
+                    })),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
